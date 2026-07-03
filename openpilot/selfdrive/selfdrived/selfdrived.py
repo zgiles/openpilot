@@ -42,6 +42,9 @@ SafetyModel = car.CarParams.SafetyModel
 AlertLevel = log.DriverMonitoringState.AlertLevel
 MonitoringPolicy = log.DriverMonitoringState.MonitoringPolicy
 
+# fork: driver monitoring modes (DmMode param)
+DM_STRICT, DM_CHIME_ONCE, DM_OFF = 0, 1, 2
+
 IGNORED_SAFETY_MODES = (SafetyModel.silent, SafetyModel.noOutput)
 
 
@@ -96,6 +99,7 @@ class SelfdriveD:
     self.is_metric = self.params.get_bool("IsMetric")
     self.is_ldw_enabled = self.params.get_bool("IsLdwEnabled")
     self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
+    self.dm_mode = int(self.params.get("DmMode") or 0)
 
     car_recognized = self.CP.brand != 'mock'
 
@@ -189,28 +193,38 @@ class SelfdriveD:
 
     # Handle DM
     if not self.CP.notCar:
-      # Block engaging until lockout times out or ignition reset
-      if self.sm['driverMonitoringState'].lockout and not self.dm_lockout_set:
-        self.params.put_bool("DriverTooDistracted", True)
-        self.dm_lockout_set = True
-      elif not self.sm['driverMonitoringState'].lockout and self.dm_lockout_set:
-        self.params.remove("DriverTooDistracted")
-        self.dm_lockout_set = False
-      # No entry conditions
-      if self.sm['driverMonitoringState'].lockout or self.sm['driverMonitoringState'].alwaysOnLockout:
-        self.events.add(EventName.tooDistracted)
-      # Alerts
-      vision_dm = self.sm['driverMonitoringState'].activePolicy == MonitoringPolicy.vision
-      if self.sm['driverMonitoringState'].alertLevel == AlertLevel.one:
-        self.events.add(EventName.driverDistracted1 if vision_dm else EventName.driverUnresponsive1)
-      elif self.sm['driverMonitoringState'].alertLevel == AlertLevel.two:
-        self.events.add(EventName.driverDistracted2 if vision_dm else EventName.driverUnresponsive2)
-      elif self.sm['driverMonitoringState'].alertLevel == AlertLevel.three:
-        self.events.add(EventName.driverDistracted3 if vision_dm else EventName.driverUnresponsive3)
-      # Warn consistent DM uncertainty
-      if self.sm['driverMonitoringState'].visionPolicyState.uncertainOffroadAlertPercent >= 100 and not self.dm_uncertain_alerted:
-        set_offroad_alert("Offroad_DriverMonitoringUncertain", True)
-        self.dm_uncertain_alerted = True
+      dm = self.sm['driverMonitoringState']
+      vision_dm = dm.activePolicy == MonitoringPolicy.vision
+      if self.dm_mode == DM_STRICT:
+        # Block engaging until lockout times out or ignition reset
+        if dm.lockout and not self.dm_lockout_set:
+          self.params.put_bool("DriverTooDistracted", True)
+          self.dm_lockout_set = True
+        elif not dm.lockout and self.dm_lockout_set:
+          self.params.remove("DriverTooDistracted")
+          self.dm_lockout_set = False
+        # No entry conditions
+        if dm.lockout or dm.alwaysOnLockout:
+          self.events.add(EventName.tooDistracted)
+        # Alerts
+        if dm.alertLevel == AlertLevel.one:
+          self.events.add(EventName.driverDistracted1 if vision_dm else EventName.driverUnresponsive1)
+        elif dm.alertLevel == AlertLevel.two:
+          self.events.add(EventName.driverDistracted2 if vision_dm else EventName.driverUnresponsive2)
+        elif dm.alertLevel == AlertLevel.three:
+          self.events.add(EventName.driverDistracted3 if vision_dm else EventName.driverUnresponsive3)
+        # Warn consistent DM uncertainty
+        if dm.visionPolicyState.uncertainOffroadAlertPercent >= 100 and not self.dm_uncertain_alerted:
+          set_offroad_alert("Offroad_DriverMonitoringUncertain", True)
+          self.dm_uncertain_alerted = True
+      else:
+        # fork: relaxed DM. Never lock out or block (re)engagement; release any lingering lockout.
+        if self.dm_lockout_set:
+          self.params.remove("DriverTooDistracted")
+          self.dm_lockout_set = False
+        # DM_CHIME_ONCE: single, non-escalating attention chime. DM_OFF: nothing.
+        if self.dm_mode == DM_CHIME_ONCE and dm.alertLevel in (AlertLevel.one, AlertLevel.two, AlertLevel.three):
+          self.events.add(EventName.driverDistracted1 if vision_dm else EventName.driverUnresponsive1)
 
     # Add car events, ignore if CAN isn't valid
     if CS.canValid:
@@ -541,6 +555,7 @@ class SelfdriveD:
       self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
       self.experimental_mode = self.params.get_bool("ExperimentalMode") and self.CP.openpilotLongitudinalControl
       self.personality = self.params.get("LongitudinalPersonality", return_default=True)
+      self.dm_mode = int(self.params.get("DmMode") or 0)
       time.sleep(0.1)
 
   def run(self):
