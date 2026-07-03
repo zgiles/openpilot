@@ -31,6 +31,7 @@ inline static std::unordered_map<std::string, ParamKeyAttributes> keys = {
     {"DisableLogging", {CLEAR_ON_MANAGER_START | CLEAR_ON_ONROAD_TRANSITION, BOOL}},
     {"DisablePowerDown", {PERSISTENT, BOOL}},
     {"DisableUpdates", {PERSISTENT, BOOL}},
+    {"CloseFollow", {PERSISTENT, BOOL, "0"}},  // fork: tighter follow gap in ACC/MPC mode
     {"DisengageOnAccelerator", {PERSISTENT, BOOL, "0"}},
     {"DongleId", {PERSISTENT, STRING}},
     {"DoReboot", {CLEAR_ON_MANAGER_START, BOOL}},

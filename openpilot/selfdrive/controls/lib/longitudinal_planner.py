@@ -5,6 +5,7 @@ import numpy as np
 import openpilot.cereal.messaging as messaging
 from opendbc.car.interfaces import ACCEL_MIN, ACCEL_MAX
 from openpilot.common.constants import CV
+from openpilot.common.params import Params
 from openpilot.common.filter_simple import FirstOrderFilter
 from openpilot.common.realtime import DT_MDL
 from openpilot.selfdrive.modeld.constants import ModelConstants
@@ -20,6 +21,8 @@ A_CRUISE_MAX_BP = [0., 10.0, 25., 40.]
 CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 ALLOW_THROTTLE_THRESHOLD = 0.4
 MIN_ALLOW_THROTTLE_SPEED = 2.5
+CLOSE_FOLLOW_SCALE = 0.85  # fork: t_follow multiplier when CloseFollow is enabled
+PARAM_READ_INTERVAL = 50   # fork: cycles between param re-reads (~1s at 20Hz)
 
 # Lookup table for turns
 _A_TOTAL_MAX_V = [1.7, 3.2]
@@ -53,6 +56,11 @@ class LongitudinalPlanner:
     self.dt = dt
     self.allow_throttle = True
 
+    # fork: runtime toggles, re-read periodically from params
+    self.params = Params()
+    self.param_read_frame = 0
+    self.close_follow = False
+
     self.a_desired = init_a
     self.v_desired_filter = FirstOrderFilter(init_v, 2.0, self.dt)
     self.prev_accel_clip = [ACCEL_MIN, ACCEL_MAX]
@@ -64,6 +72,11 @@ class LongitudinalPlanner:
     self.j_desired_trajectory = np.zeros(CONTROL_N)
 
   def update(self, sm):
+    # fork: refresh runtime toggles ~1x/s
+    if self.param_read_frame % PARAM_READ_INTERVAL == 0:
+      self.close_follow = self.params.get_bool("CloseFollow")
+    self.param_read_frame += 1
+
     if len(sm['carControl'].orientationNED) == 3:
       accel_coast = get_coast_accel(sm['carControl'].orientationNED[1])
     else:
@@ -109,9 +122,10 @@ class LongitudinalPlanner:
     if force_slow_decel:
       v_cruise = 0.0
 
+    t_follow_scale = CLOSE_FOLLOW_SCALE if self.close_follow else 1.0
     self.mpc.set_weights(prev_accel_constraint, personality=sm['selfdriveState'].personality)
     self.mpc.set_cur_state(self.v_desired_filter.x, self.a_desired)
-    self.mpc.update(sm['radarState'], v_cruise, personality=sm['selfdriveState'].personality)
+    self.mpc.update(sm['radarState'], v_cruise, personality=sm['selfdriveState'].personality, t_follow_scale=t_follow_scale)
 
     self.v_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC, self.mpc.v_solution)
     self.a_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC, self.mpc.a_solution)

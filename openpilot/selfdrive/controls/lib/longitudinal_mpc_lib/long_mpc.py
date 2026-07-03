@@ -309,8 +309,8 @@ class LongitudinalMpc:
     lead_xv = self.extrapolate_lead(x_lead, v_lead, a_lead, a_lead_tau)
     return lead_xv
 
-  def update(self, radarstate, v_cruise, personality=log.LongitudinalPersonality.standard):
-    t_follow = get_T_FOLLOW(personality)
+  def update(self, radarstate, v_cruise, personality=log.LongitudinalPersonality.standard, t_follow_scale=1.0):
+    t_follow = get_T_FOLLOW(personality) * t_follow_scale
     v_ego = self.x0[1]
 
     lead_xv_0 = self.process_lead(radarstate.leadOne)
