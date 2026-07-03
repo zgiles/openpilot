@@ -60,6 +60,7 @@ class LongitudinalPlanner:
     self.params = Params()
     self.param_read_frame = 0
     self.close_follow = False
+    self.aggressive_e2e = False
 
     self.a_desired = init_a
     self.v_desired_filter = FirstOrderFilter(init_v, 2.0, self.dt)
@@ -75,6 +76,7 @@ class LongitudinalPlanner:
     # fork: refresh runtime toggles ~1x/s
     if self.param_read_frame % PARAM_READ_INTERVAL == 0:
       self.close_follow = self.params.get_bool("CloseFollow")
+      self.aggressive_e2e = self.params.get_bool("AggressiveE2E")
     self.param_read_frame += 1
 
     if len(sm['carControl'].orientationNED) == 3:
@@ -148,10 +150,16 @@ class LongitudinalPlanner:
     output_should_stop_e2e = sm['modelV2'].action.shouldStop
 
     if sm['selfdriveState'].experimentalMode:
-      output_a_target = min(output_a_target_e2e, output_a_target_mpc)
-      self.output_should_stop = output_should_stop_e2e or output_should_stop_mpc
-      if output_a_target < output_a_target_mpc:
+      if self.aggressive_e2e:
+        # fork: let the end-to-end model command accel directly, without the MPC min() cap
+        output_a_target = output_a_target_e2e
+        self.output_should_stop = output_should_stop_e2e
         self.mpc.source = LongitudinalPlanSource.e2e
+      else:
+        output_a_target = min(output_a_target_e2e, output_a_target_mpc)
+        self.output_should_stop = output_should_stop_e2e or output_should_stop_mpc
+        if output_a_target < output_a_target_mpc:
+          self.mpc.source = LongitudinalPlanSource.e2e
     else:
       output_a_target = output_a_target_mpc
       self.output_should_stop = output_should_stop_mpc
