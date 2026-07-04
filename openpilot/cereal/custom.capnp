@@ -10,7 +10,15 @@ $Cxx.namespace("cereal");
 # DO rename the structs
 # DON'T change the identifier (e.g. @0x81c2f05a394cf4af)
 
-struct CustomReserved0 @0x81c2f05a394cf4af {
+struct CarInfo @0x81c2f05a394cf4af {
+  # fork: decoded car telemetry from CAN (see selfdrive/carinfod.py)
+  acOn         @0 :Bool;
+  acSetpoint   @1 :UInt8;    # low bits of AIR_CONDITIONER (temp setting)
+  acDefrost    @2 :Bool;
+  cabinTempRaw @3 :UInt8;    # TODO: calibrate to degF (~0x66 == 60F)
+  fanSpeed     @4 :UInt8;    # TODO: not yet located on the tapped bus
+  evMode       @5 :Bool;     # unconfirmed decode (0x3b6)
+  driveMode    @6 :Text;     # NORMAL / ECO / SPORT
 }
 
 struct CustomReserved1 @0xaedffd8f31e7b55d {
