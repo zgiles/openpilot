@@ -275,6 +275,11 @@ def compile_jit(jit, make_random_inputs, input_keys, make_queues):
 
   print('capture + replay')
   test_val, test_buffers = random_inputs_run(jit, SEED)
+  # fork: the pickle round-trip validation holds a 2nd copy of the model in RAM, which OOMs
+  # the big (eGPU) model on the ~3.6GB comma four. Skip it to fit; the real output serialization
+  # (dump_oob) below is unaffected.
+  if os.getenv('SKIP_PICKLE_ROUNDTRIP'):
+    return jit
   print('pickle round trip')
   with tempfile.TemporaryFile(dir=".") as f:
     dump_oob(jit, f)
