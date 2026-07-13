@@ -13,6 +13,7 @@ class TogglesLayoutMici(NavScroller):
   def __init__(self):
     super().__init__()
 
+    mad_max_toggle = BigParamControl("mad max", "MadMax", toggle_callback=self._apply_mad_max)
     self._personality_toggle = BigMultiParamToggle("driving personality", "LongitudinalPersonality", ["aggressive", "standard", "relaxed"])
     self._experimental_btn = BigParamControl("experimental mode", "ExperimentalMode")
     is_metric_toggle = BigParamControl("use metric units", "IsMetric")
@@ -20,11 +21,13 @@ class TogglesLayoutMici(NavScroller):
     always_on_dm_toggle = BigParamControl("always-on driver monitor", "AlwaysOnDM")
     self._dm_mode_toggle = BigMultiParamToggle("driver monitoring", "DmMode", ["strict", "chime once", "off"])
     close_follow_toggle = BigParamControl("close following", "CloseFollow")
+    assertive_accel_toggle = BigParamControl("assertive accel", "AssertiveAccel")
     record_front = BigParamControl("record & upload driver camera", "RecordFront", toggle_callback=restart_needed_callback)
     record_mic = BigParamControl("record & upload mic audio", "RecordAudio", toggle_callback=restart_needed_callback)
     enable_openpilot = BigParamControl("enable openpilot", "OpenpilotEnabledToggle", toggle_callback=restart_needed_callback)
 
     self._scroller.add_widgets([
+      mad_max_toggle,
       self._personality_toggle,
       self._experimental_btn,
       is_metric_toggle,
@@ -32,6 +35,7 @@ class TogglesLayoutMici(NavScroller):
       always_on_dm_toggle,
       self._dm_mode_toggle,
       close_follow_toggle,
+      assertive_accel_toggle,
       record_front,
       record_mic,
       enable_openpilot,
@@ -44,6 +48,7 @@ class TogglesLayoutMici(NavScroller):
       ("IsLdwEnabled", ldw_toggle),
       ("AlwaysOnDM", always_on_dm_toggle),
       ("CloseFollow", close_follow_toggle),
+      ("AssertiveAccel", assertive_accel_toggle),
       ("RecordFront", record_front),
       ("RecordAudio", record_mic),
       ("OpenpilotEnabledToggle", enable_openpilot),
@@ -58,6 +63,20 @@ class TogglesLayoutMici(NavScroller):
       gui_app.set_show_fps(True)
 
     ui_state.add_engaged_transition_callback(self._update_toggles)
+
+  def _apply_mad_max(self, checked: bool):
+    # fork: "mad max" is a preset — it bulk-sets the aggressive toggles, which then show
+    # their new state and can be re-adjusted individually. Off restores stock defaults.
+    p = ui_state.params
+    p.put_bool("CloseFollow", checked)
+    p.put_bool("ExperimentalMode", checked)
+    p.put_bool("AssertiveAccel", checked)
+    personality = PERSONALITY_TO_INT["aggressive" if checked else "standard"]
+    p.put("LongitudinalPersonality", personality)
+    p.put("DmMode", 2 if checked else 0)  # 2=off, 0=strict
+    # reflect the change in the visible toggles right away
+    self._personality_toggle.set_value(self._personality_toggle._options[personality])
+    self._update_toggles()
 
   def _update_state(self):
     super()._update_state()

@@ -17,6 +17,7 @@ from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
 from openpilot.common.swaglog import cloudlog
 
 A_CRUISE_MAX_VALS = [1.6, 1.2, 0.8, 0.6]
+A_CRUISE_MAX_VALS_ASSERTIVE = [2.0, 1.8, 1.2, 0.8]  # fork: AssertiveAccel curve (panda hard-caps at 2.0)
 A_CRUISE_MAX_BP = [0., 10.0, 25., 40.]
 CONTROL_N_T_IDX = ModelConstants.T_IDXS[:CONTROL_N]
 ALLOW_THROTTLE_THRESHOLD = 0.4
@@ -26,22 +27,24 @@ PARAM_READ_INTERVAL = 50   # fork: cycles between param re-reads (~1s at 20Hz)
 
 # Lookup table for turns
 _A_TOTAL_MAX_V = [1.7, 3.2]
+_A_TOTAL_MAX_V_ASSERTIVE = [2.5, 4.0]  # fork: AssertiveAccel turn budget (more throttle mid-corner)
 _A_TOTAL_MAX_BP = [20., 40.]
 
-def get_max_accel(v_ego):
-  return np.interp(v_ego, A_CRUISE_MAX_BP, A_CRUISE_MAX_VALS)
+def get_max_accel(v_ego, assertive=False):
+  vals = A_CRUISE_MAX_VALS_ASSERTIVE if assertive else A_CRUISE_MAX_VALS
+  return np.interp(v_ego, A_CRUISE_MAX_BP, vals)
 
 def get_coast_accel(pitch):
   return np.sin(pitch) * -5.65 - 0.3  # fitted from data using xx/projects/allow_throttle/compute_coast_accel.py
 
-def limit_accel_in_turns(v_ego, angle_steers, a_target, CP):
+def limit_accel_in_turns(v_ego, angle_steers, a_target, CP, assertive=False):
   """
   This function returns a limited long acceleration allowed, depending on the existing lateral acceleration
   this should avoid accelerating when losing the target in turns
   """
   # FIXME: This function to calculate lateral accel is incorrect and should use the VehicleModel
   # The lookup table for turns should also be updated if we do this
-  a_total_max = np.interp(v_ego, _A_TOTAL_MAX_BP, _A_TOTAL_MAX_V)
+  a_total_max = np.interp(v_ego, _A_TOTAL_MAX_BP, _A_TOTAL_MAX_V_ASSERTIVE if assertive else _A_TOTAL_MAX_V)
   a_y = v_ego ** 2 * angle_steers * CV.DEG_TO_RAD / (CP.steerRatio * CP.wheelbase)
   a_x_allowed = math.sqrt(max(a_total_max ** 2 - a_y ** 2, 0.))
 
@@ -60,6 +63,7 @@ class LongitudinalPlanner:
     self.params = Params()
     self.param_read_frame = 0
     self.close_follow = False
+    self.assertive_accel = False
 
     self.a_desired = init_a
     self.v_desired_filter = FirstOrderFilter(init_v, 2.0, self.dt)
@@ -75,6 +79,7 @@ class LongitudinalPlanner:
     # fork: refresh runtime toggles ~1x/s
     if self.param_read_frame % PARAM_READ_INTERVAL == 0:
       self.close_follow = self.params.get_bool("CloseFollow")
+      self.assertive_accel = self.params.get_bool("AssertiveAccel")
     self.param_read_frame += 1
 
     if len(sm['carControl'].orientationNED) == 3:
@@ -98,9 +103,9 @@ class LongitudinalPlanner:
     # No change cost when user is controlling the speed, or when standstill
     prev_accel_constraint = not (reset_state or sm['carState'].standstill)
 
-    accel_clip = [ACCEL_MIN, get_max_accel(v_ego)]
+    accel_clip = [ACCEL_MIN, get_max_accel(v_ego, self.assertive_accel)]
     steer_angle_without_offset = sm['carState'].steeringAngleDeg - sm['liveParameters'].angleOffsetDeg
-    accel_clip = limit_accel_in_turns(v_ego, steer_angle_without_offset, accel_clip, self.CP)
+    accel_clip = limit_accel_in_turns(v_ego, steer_angle_without_offset, accel_clip, self.CP, self.assertive_accel)
 
     if reset_state:
       self.v_desired_filter.x = v_ego
