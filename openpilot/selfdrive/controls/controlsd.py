@@ -26,6 +26,8 @@ State = log.SelfdriveState.OpenpilotState
 LaneChangeState = log.LaneChangeState
 LaneChangeDirection = log.LaneChangeDirection
 
+DM_STRICT = 0  # fork: DmMode values -> 0=strict, 1=chime once, 2=off
+
 ACTUATOR_FIELDS = tuple(car.CarControl.Actuators.schema.fields.keys())
 
 
@@ -50,6 +52,8 @@ class Controls:
     self.pose_calibrator = PoseCalibrator()
     self.calibrated_pose: Pose | None = None
 
+    self.dm_mode = int(self.params.get("DmMode") or 0)  # fork: relaxed DM gating
+
     self.LoC = LongControl(self.CP)
     self.VM = VehicleModel(self.CP)
     self.LaC: LatControl
@@ -64,6 +68,9 @@ class Controls:
 
   def update(self):
     self.sm.update(15)
+    # fork: refresh DmMode ~2x/s so relaxed modes don't force-decel the car
+    if self.sm.frame % 50 == 0:
+      self.dm_mode = int(self.params.get("DmMode") or 0)
     if self.sm.updated["liveCalibration"]:
       self.pose_calibrator.feed_live_calib(self.sm['liveCalibration'])
     if self.sm.updated["livePose"]:
@@ -200,7 +207,10 @@ class Controls:
     cs.upAccelCmd = float(self.LoC.pid.p)
     cs.uiAccelCmd = float(self.LoC.pid.i)
     cs.ufAccelCmd = float(self.LoC.pid.f)
-    cs.forceDecel = bool(self.sm['driverMonitoringState'].noResponseForceDecel or
+    # fork: only strict DM mode force-decelerates for an unresponsive driver;
+    # "chime once"/"off" suppress the slowdown (chime is already gated in selfdrived)
+    dm_force_decel = self.sm['driverMonitoringState'].noResponseForceDecel and self.dm_mode == DM_STRICT
+    cs.forceDecel = bool(dm_force_decel or
                          (self.sm['selfdriveState'].state == State.softDisabling))
 
     # trigger the car's stock driver monitoring escalation
