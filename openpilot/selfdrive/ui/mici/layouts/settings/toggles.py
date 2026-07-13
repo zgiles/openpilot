@@ -20,7 +20,6 @@ class TogglesLayoutMici(NavScroller):
     always_on_dm_toggle = BigParamControl("always-on driver monitor", "AlwaysOnDM")
     self._dm_mode_toggle = BigMultiParamToggle("driver monitoring", "DmMode", ["strict", "chime once", "off"])
     close_follow_toggle = BigParamControl("close following", "CloseFollow")
-    aggressive_e2e_toggle = BigParamControl("aggressive e2e (experimental)", "AggressiveE2E")
     record_front = BigParamControl("record & upload driver camera", "RecordFront", toggle_callback=restart_needed_callback)
     record_mic = BigParamControl("record & upload mic audio", "RecordAudio", toggle_callback=restart_needed_callback)
     enable_openpilot = BigParamControl("enable openpilot", "OpenpilotEnabledToggle", toggle_callback=restart_needed_callback)
@@ -33,7 +32,6 @@ class TogglesLayoutMici(NavScroller):
       always_on_dm_toggle,
       self._dm_mode_toggle,
       close_follow_toggle,
-      aggressive_e2e_toggle,
       record_front,
       record_mic,
       enable_openpilot,
@@ -46,7 +44,6 @@ class TogglesLayoutMici(NavScroller):
       ("IsLdwEnabled", ldw_toggle),
       ("AlwaysOnDM", always_on_dm_toggle),
       ("CloseFollow", close_follow_toggle),
-      ("AggressiveE2E", aggressive_e2e_toggle),
       ("RecordFront", record_front),
       ("RecordAudio", record_mic),
       ("OpenpilotEnabledToggle", enable_openpilot),
