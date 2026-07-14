@@ -55,6 +55,7 @@
     wayland
     xorg.libX11 xorg.libXext xorg.libXrandr xorg.libXinerama
     xorg.libXcursor xorg.libXi xorg.libXrender xorg.libXfixes
+    xorg.xorgserver xorg.xauth   # Xvfb, for the UI render/report (setup_xvfb.sh)
     fontconfig freetype
 
     # handy
