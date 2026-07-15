@@ -7,7 +7,7 @@ at ~2Hz. It's logged by loggerd and uploaded to Connect via the qlog. The addres
 are Toyota-specific; on other cars the frames simply never arrive and it publishes
 defaults, so it's harmless to run everywhere.
 """
-import cereal.messaging as messaging
+import openpilot.cereal.messaging as messaging
 
 
 def decode(frames: dict[int, bytes]) -> dict:
